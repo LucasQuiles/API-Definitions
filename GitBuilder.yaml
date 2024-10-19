@@ -1,0 +1,1047 @@
+openapi: 3.1.0
+info:
+  title: GitHub REST API
+  description: |
+    This API allows you to interact with GitHub repositories, branches, code scanning alerts, autolinks, and search functionalities.
+  version: 1.0.0
+servers:
+  - url: https://api.github.com
+    description: GitHub API
+
+security:
+  - GitHubAuth: []
+
+components:
+  securitySchemes:
+    GitHubAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: token
+
+  schemas:
+    Error:
+      type: object
+      properties:
+        message:
+          type: string
+          description: Error message describing the problem.
+        documentation_url:
+          type: string
+          description: URL to GitHub's documentation related to the error.
+
+    Branch:
+      type: object
+      properties:
+        name:
+          type: string
+          description: Name of the branch.
+        commit:
+          type: object
+          properties:
+            sha:
+              type: string
+              description: SHA of the commit.
+            url:
+              type: string
+              description: API URL of the commit.
+        protected:
+          type: boolean
+          description: Whether the branch is protected.
+
+    Autolink:
+      type: object
+      properties:
+        id:
+          type: integer
+          description: Unique identifier of the autolink.
+        key_prefix:
+          type: string
+          description: Prefix of the autolink reference.
+        url_template:
+          type: string
+          description: URL template of the autolink.
+        is_alphanumeric:
+          type: boolean
+          description: Whether the autolink reference is alphanumeric.
+
+    CodeScanningAlert:
+      type: object
+      properties:
+        number:
+          type: integer
+          description: The code scanning alert number.
+        state:
+          type: string
+          description: The state of the alert.
+        dismissed_reason:
+          type: string
+          description: Reason for dismissing the alert.
+        dismissed_comment:
+          type: string
+          description: Comment explaining the dismissal.
+
+    SearchResult:
+      type: object
+      properties:
+        total_count:
+          type: integer
+          description: The total number of search results.
+        incomplete_results:
+          type: boolean
+          description: Whether the results are incomplete.
+        items:
+          type: array
+          items:
+            type: object
+            description: The search result item.
+
+  responses:
+    NotFound:
+      description: Resource not found.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Forbidden:
+      description: Access denied.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    ValidationFailed:
+      description: Validation failed.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    InternalServerError:
+      description: Internal server error.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+paths:
+  /repos/{owner}/{repo}/branches:
+    get:
+      operationId: listBranches
+      summary: List branches
+      description: Retrieve a list of branches from a repository.
+      parameters:
+        - name: owner
+          in: path
+          required: true
+          description: The owner of the repository.
+          schema:
+            type: string
+        - name: repo
+          in: path
+          required: true
+          description: The name of the repository.
+          schema:
+            type: string
+        - name: protected
+          in: query
+          required: false
+          description: Return only protected branches.
+          schema:
+            type: boolean
+        - name: per_page
+          in: query
+          required: false
+          description: Results per page (max 100).
+          schema:
+            type: integer
+            default: 30
+        - name: page
+          in: query
+          required: false
+          description: Page number.
+          schema:
+            type: integer
+            default: 1
+      security:
+        - GitHubAuth: []
+      responses:
+        '200':
+          description: Success
+          content:
+            application/vnd.github.v3+json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Branch'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /repos/{owner}/{repo}/branches/{branch}:
+    get:
+      operationId: getBranch
+      summary: Get a branch
+      description: Retrieve details of a specific branch.
+      parameters:
+        - name: owner
+          in: path
+          required: true
+          description: The owner of the repository.
+          schema:
+            type: string
+        - name: repo
+          in: path
+          required: true
+          description: The name of the repository.
+          schema:
+            type: string
+        - name: branch
+          in: path
+          required: true
+          description: Branch name.
+          schema:
+            type: string
+      security:
+        - GitHubAuth: []
+      responses:
+        '200':
+          description: Success
+          content:
+            application/vnd.github.v3+json:
+              schema:
+                $ref: '#/components/schemas/Branch'
+        '301':
+          description: Moved permanently.
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    post:
+      operationId: renameBranch
+      summary: Rename a branch
+      description: Rename an existing branch in the repository.
+      parameters:
+        - name: owner
+          in: path
+          required: true
+          description: The owner of the repository.
+          schema:
+            type: string
+        - name: repo
+          in: path
+          required: true
+          description: The name of the repository.
+          schema:
+            type: string
+        - name: branch
+          in: path
+          required: true
+          description: Existing branch name.
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - new_name
+              properties:
+                new_name:
+                  type: string
+                  description: New branch name.
+      security:
+        - GitHubAuth: []
+      responses:
+        '201':
+          description: Branch renamed successfully.
+          content:
+            application/vnd.github.v3+json:
+              schema:
+                $ref: '#/components/schemas/Branch'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+
+  /repos/{owner}/{repo}/merge-upstream:
+    post:
+      operationId: syncForkBranch
+      summary: Sync a fork branch with upstream repository
+      description: Sync a branch of a forked repository with the upstream branch.
+      parameters:
+        - name: owner
+          in: path
+          required: true
+          description: The owner of the repository.
+          schema:
+            type: string
+        - name: repo
+          in: path
+          required: true
+          description: The name of the repository.
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - branch
+              properties:
+                branch:
+                  type: string
+                  description: Branch to be synced with upstream.
+      security:
+        - GitHubAuth: []
+      responses:
+        '200':
+          description: Synced successfully.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    description: Success message.
+        '409':
+          description: Merge conflict.
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+
+  /repos/{owner}/{repo}/merges:
+    post:
+      operationId: mergeBranch
+      summary: Merge a branch
+      description: Merge a branch into another base branch.
+      parameters:
+        - name: owner
+          in: path
+          required: true
+          description: The owner of the repository.
+          schema:
+            type: string
+        - name: repo
+          in: path
+          required: true
+          description: The name of the repository.
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - base
+                - head
+              properties:
+                base:
+                  type: string
+                  description: Base branch name.
+                head:
+                  type: string
+                  description: Branch or commit to merge.
+                commit_message:
+                  type: string
+                  description: Custom commit message.
+      security:
+        - GitHubAuth: []
+      responses:
+        '201':
+          description: Merged successfully.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  sha:
+                    type: string
+                    description: SHA of the merge commit.
+                  merged:
+                    type: boolean
+                    description: Merge status.
+                  message:
+                    type: string
+                    description: Merge message.
+        '204':
+          description: Already merged.
+        '409':
+          description: Merge conflict.
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+
+  /repos/{owner}/{repo}/code-scanning/alerts:
+    get:
+      operationId: listCodeScanningAlertsForRepo
+      summary: List code scanning alerts for a repository
+      description: Retrieve code scanning alerts for a specific repository.
+      parameters:
+        - name: owner
+          in: path
+          required: true
+          description: The owner of the repository.
+          schema:
+            type: string
+        - name: repo
+          in: path
+          required: true
+          description: The name of the repository.
+          schema:
+            type: string
+        - name: tool_name
+          in: query
+          required: false
+          description: Filter by tool name.
+          schema:
+            type: string
+        - name: state
+          in: query
+          required: false
+          description: Filter by alert state.
+          schema:
+            type: string
+            enum: [open, dismissed, fixed]
+        - name: severity
+          in: query
+          required: false
+          description: Filter by severity.
+          schema:
+            type: string
+            enum: [error, warning, note]
+        - name: ref
+          in: query
+          required: false
+          description: The name of the commit/branch/tag.
+          schema:
+            type: string
+        - name: pr
+          in: query
+          required: false
+          description: Pull request number to filter results.
+          schema:
+            type: integer
+        - name: per_page
+          in: query
+          required: false
+          description: Results per page (max 100).
+          schema:
+            type: integer
+            default: 30
+        - name: page
+          in: query
+          required: false
+          description: Page number.
+          schema:
+            type: integer
+            default: 1
+      security:
+        - GitHubAuth: []
+      responses:
+        '200':
+          description: Alerts retrieved successfully.
+          content:
+            application/vnd.github.v3+json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CodeScanningAlert'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /repos/{owner}/{repo}/code-scanning/alerts/{alert_number}:
+    get:
+      operationId: getCodeScanningAlert
+      summary: Get a code scanning alert
+      description: Retrieve detailed information about a specific code scanning alert.
+      parameters:
+        - name: owner
+          in: path
+          required: true
+          description: The owner of the repository.
+          schema:
+            type: string
+        - name: repo
+          in: path
+          required: true
+          description: The name of the repository.
+          schema:
+            type: string
+        - name: alert_number
+          in: path
+          required: true
+          description: The code scanning alert number.
+          schema:
+            type: integer
+      security:
+        - GitHubAuth: []
+      responses:
+        '200':
+          description: Alert retrieved successfully.
+          content:
+            application/vnd.github.v3+json:
+              schema:
+                $ref: '#/components/schemas/CodeScanningAlert'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    patch:
+      operationId: updateCodeScanningAlert
+      summary: Update a code scanning alert
+      description: Update the state of a code scanning alert.
+      parameters:
+        - name: owner
+          in: path
+          required: true
+          description: The owner of the repository.
+          schema:
+            type: string
+        - name: repo
+          in: path
+          required: true
+          description: The name of the repository.
+          schema:
+            type: string
+        - name: alert_number
+          in: path
+          required: true
+          description: The code scanning alert number.
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                state:
+                  type: string
+                  description: The new state of the alert.
+                  enum: [open, dismissed, fixed]
+                dismissed_reason:
+                  type: string
+                  description: Required when state is 'dismissed'.
+                  enum: [false_positive, won't_fix, used_in_tests]
+                dismissed_comment:
+                  type: string
+                  description: Optional dismissal comment.
+      security:
+        - GitHubAuth: []
+      responses:
+        '200':
+          description: Alert updated successfully.
+          content:
+            application/vnd.github.v3+json:
+              schema:
+                $ref: '#/components/schemas/CodeScanningAlert'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /repos/{owner}/{repo}/autolinks:
+    get:
+      operationId: listAutolinks
+      summary: List all autolinks of a repository
+      description: Retrieve all autolinks configured for a specific repository.
+      parameters:
+        - name: owner
+          in: path
+          required: true
+          description: The owner of the repository.
+          schema:
+            type: string
+        - name: repo
+          in: path
+          required: true
+          description: The name of the repository.
+          schema:
+            type: string
+        - name: per_page
+          in: query
+          required: false
+          description: Results per page (max 100).
+          schema:
+            type: integer
+            default: 30
+        - name: page
+          in: query
+          required: false
+          description: Page number.
+          schema:
+            type: integer
+            default: 1
+      security:
+        - GitHubAuth: []
+      responses:
+        '200':
+          description: Autolinks retrieved successfully.
+          content:
+            application/vnd.github.v3+json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Autolink'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+    post:
+      operationId: createAutolink
+      summary: Create an autolink reference for a repository
+      description: Create a new autolink reference for a repository.
+      parameters:
+        - name: owner
+          in: path
+          required: true
+          description: The owner of the repository.
+          schema:
+            type: string
+        - name: repo
+          in: path
+          required: true
+          description: The name of the repository.
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - key_prefix
+                - url_template
+              properties:
+                key_prefix:
+                  type: string
+                  description: Prefix of the autolink reference.
+                url_template:
+                  type: string
+                  description: URL template.
+                is_alphanumeric:
+                  type: boolean
+                  description: Whether the autolink reference is alphanumeric.
+      security:
+        - GitHubAuth: []
+      responses:
+        '201':
+          description: Autolink created successfully.
+          content:
+            application/vnd.github.v3+json:
+              schema:
+                $ref: '#/components/schemas/Autolink'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+
+  /repos/{owner}/{repo}/autolinks/{autolink_id}:
+    get:
+      operationId: getAutolink
+      summary: Get an autolink reference by ID
+      description: Retrieve details of a specific autolink by its ID.
+      parameters:
+        - name: owner
+          in: path
+          required: true
+          description: The owner of the repository.
+          schema:
+            type: string
+        - name: repo
+          in: path
+          required: true
+          description: The name of the repository.
+          schema:
+            type: string
+        - name: autolink_id
+          in: path
+          required: true
+          description: The unique ID of the autolink.
+          schema:
+            type: integer
+      security:
+        - GitHubAuth: []
+      responses:
+        '200':
+          description: Autolink retrieved successfully.
+          content:
+            application/vnd.github.v3+json:
+              schema:
+                $ref: '#/components/schemas/Autolink'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    delete:
+      operationId: deleteAutolink
+      summary: Delete an autolink reference by ID
+      description: Delete a specific autolink by its ID.
+      parameters:
+        - name: owner
+          in: path
+          required: true
+          description: The owner of the repository.
+          schema:
+            type: string
+        - name: repo
+          in: path
+          required: true
+          description: The name of the repository.
+          schema:
+            type: string
+        - name: autolink_id
+          in: path
+          required: true
+          description: The unique ID of the autolink.
+          schema:
+            type: integer
+      security:
+        - GitHubAuth: []
+      responses:
+        '204':
+          description: Autolink deleted successfully.
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /search/code:
+    get:
+      operationId: searchCode
+      summary: Search code
+      description: Search within code for specific terms.
+      parameters:
+        - name: q
+          in: query
+          required: true
+          description: Search keywords and qualifiers.
+          schema:
+            type: string
+        - name: sort
+          in: query
+          required: false
+          description: Sort field. Can be 'indexed'.
+          schema:
+            type: string
+            enum: [indexed]
+        - name: order
+          in: query
+          required: false
+          description: Sort order. Can be 'asc' or 'desc'.
+          schema:
+            type: string
+            enum: [asc, desc]
+        - name: per_page
+          in: query
+          required: false
+          description: Results per page (max 100).
+          schema:
+            type: integer
+            default: 30
+        - name: page
+          in: query
+          required: false
+          description: Page number.
+          schema:
+            type: integer
+            default: 1
+      security:
+        - GitHubAuth: []
+      responses:
+        '200':
+          description: Code search results.
+          content:
+            application/vnd.github.v3+json:
+              schema:
+                $ref: '#/components/schemas/SearchResult'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /search/commits:
+    get:
+      operationId: searchCommits
+      summary: Search commits
+      description: Search for commits based on keywords.
+      parameters:
+        - name: q
+          in: query
+          required: true
+          description: Search keywords and qualifiers.
+          schema:
+            type: string
+        - name: sort
+          in: query
+          required: false
+          description: Sort field. Can be 'author-date' or 'committer-date'.
+          schema:
+            type: string
+            enum: [author-date, committer-date]
+        - name: order
+          in: query
+          required: false
+          description: Sort order. Can be 'asc' or 'desc'.
+          schema:
+            type: string
+            enum: [asc, desc]
+        - name: per_page
+          in: query
+          required: false
+          description: Results per page (max 100).
+          schema:
+            type: integer
+            default: 30
+        - name: page
+          in: query
+          required: false
+          description: Page number.
+          schema:
+            type: integer
+            default: 1
+      security:
+        - GitHubAuth: []
+      responses:
+        '200':
+          description: Commit search results.
+          content:
+            application/vnd.github.v3+json:
+              schema:
+                $ref: '#/components/schemas/SearchResult'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /search/issues:
+    get:
+      operationId: searchIssues
+      summary: Search issues and pull requests
+      description: Find issues and pull requests based on keywords and labels.
+      parameters:
+        - name: q
+          in: query
+          required: true
+          description: Search keywords and qualifiers.
+          schema:
+            type: string
+        - name: sort
+          in: query
+          required: false
+          description: Sort field. Can be 'comments', 'reactions', 'created', or 'updated'.
+          schema:
+            type: string
+            enum: [comments, reactions, created, updated]
+        - name: order
+          in: query
+          required: false
+          description: Sort order. Can be 'asc' or 'desc'.
+          schema:
+            type: string
+            enum: [asc, desc]
+        - name: per_page
+          in: query
+          required: false
+          description: Results per page (max 100).
+          schema:
+            type: integer
+            default: 30
+        - name: page
+          in: query
+          required: false
+          description: Page number.
+          schema:
+            type: integer
+            default: 1
+      security:
+        - GitHubAuth: []
+      responses:
+        '200':
+          description: Issues and PRs search results.
+          content:
+            application/vnd.github.v3+json:
+              schema:
+                $ref: '#/components/schemas/SearchResult'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /search/labels:
+    get:
+      operationId: searchLabels
+      summary: Search labels
+      description: Search for labels within a repository.
+      parameters:
+        - name: q
+          in: query
+          required: true
+          description: Search keywords.
+          schema:
+            type: string
+        - name: repository_id
+          in: query
+          required: true
+          description: The repository ID.
+          schema:
+            type: integer
+        - name: per_page
+          in: query
+          required: false
+          description: Results per page (max 100).
+          schema:
+            type: integer
+            default: 30
+        - name: page
+          in: query
+          required: false
+          description: Page number.
+          schema:
+            type: integer
+            default: 1
+      security:
+        - GitHubAuth: []
+      responses:
+        '200':
+          description: Labels search results.
+          content:
+            application/vnd.github.v3+json:
+              schema:
+                $ref: '#/components/schemas/SearchResult'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /search/repositories:
+    get:
+      operationId: searchRepositories
+      summary: Search repositories
+      description: Search for repositories based on name, description, or other criteria.
+      parameters:
+        - name: q
+          in: query
+          required: true
+          description: Search keywords and qualifiers.
+          schema:
+            type: string
+        - name: sort
+          in: query
+          required: false
+          description: Sort field. Can be 'stars', 'forks', or 'updated'.
+          schema:
+            type: string
+            enum: [stars, forks, updated]
+        - name: order
+          in: query
+          required: false
+          description: Sort order. Can be 'asc' or 'desc'.
+          schema:
+            type: string
+            enum: [asc, desc]
+        - name: per_page
+          in: query
+          required: false
+          description: Results per page (max 100).
+          schema:
+            type: integer
+            default: 30
+        - name: page
+          in: query
+          required: false
+          description: Page number.
+          schema:
+            type: integer
+            default: 1
+      security:
+        - GitHubAuth: []
+      responses:
+        '200':
+          description: Repositories search results.
+          content:
+            application/vnd.github.v3+json:
+              schema:
+                $ref: '#/components/schemas/SearchResult'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /search/topics:
+    get:
+      operationId: searchTopics
+      summary: Search topics
+      description: Search for topics related to certain keywords.
+      parameters:
+        - name: q
+          in: query
+          required: true
+          description: Search keywords.
+          schema:
+            type: string
+        - name: per_page
+          in: query
+          required: false
+          description: Results per page (max 100).
+          schema:
+            type: integer
+            default: 30
+        - name: page
+          in: query
+          required: false
+          description: Page number.
+          schema:
+            type: integer
+            default: 1
+      security:
+        - GitHubAuth: []
+      responses:
+        '200':
+          description: Topics search results.
+          content:
+            application/vnd.github.v3+json:
+              schema:
+                $ref: '#/components/schemas/SearchResult'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /search/users:
+    get:
+      operationId: searchUsers
+      summary: Search users
+      description: Search for users by name, public email, or other criteria.
+      parameters:
+        - name: q
+          in: query
+          required: true
+          description: Search keywords and qualifiers.
+          schema:
+            type: string
+        - name: sort
+          in: query
+          required: false
+          description: Sort field. Can be 'followers', 'repositories', or 'joined'.
+          schema:
+            type: string
+            enum: [followers, repositories, joined]
+        - name: order
+          in: query
+          required: false
+          description: Sort order. Can be 'asc' or 'desc'.
+          schema:
+            type: string
+            enum: [asc, desc]
+        - name: per_page
+          in: query
+          required: false
+          description: Results per page (max 100).
+          schema:
+            type: integer
+            default: 30
+        - name: page
+          in: query
+          required: false
+          description: Page number.
+          schema:
+            type: integer
+            default: 1
+      security:
+        - GitHubAuth: []
+      responses:
+        '200':
+          description: Users search results.
+          content:
+            application/vnd.github.v3+json:
+              schema:
+                $ref: '#/components/schemas/SearchResult'
+        '403':
+          $ref: '#/components/responses/Forbidden'
